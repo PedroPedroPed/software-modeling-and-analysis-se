@@ -1,98 +1,107 @@
 CREATE TABLE Users(
-Id SERIAL PRIMARY KEY;
-Name TEXT NOT NULL UNIQUE;
-Email TEXT NOT NULL UNIQUE;
-Password TEXT NOT NULL;
-Birthday DATE;
-Sex CHAR(1);
-HeightInCm NUMERIC(5,2);
-WeightKg NUMERIC(5,2);
-Activity TEXT;
-CreatedAt TIMESTAMP DEFAULT NOW();
+Id SERIAL PRIMARY KEY,
+Name TEXT NOT NULL UNIQUE,
+Email TEXT NOT NULL UNIQUE,
+Password TEXT NOT NULL,
+Birthday DATE,
+Sex CHAR(1),
+HeightInCm NUMERIC(5,2),
+WeightKg NUMERIC(5,2),
+Activity TEXT,
+CreatedAt TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE UserTargets(
-Id SERIAL PRIMARY KEY;
-UserId INT NOT NULL;
-Type TEXT NOT NULL;
-TargetWeight NUMERIC(5,2);
-DailyCalories INT;
-StartDate DATE DEFAULT CURRENT_DATE;
-EndDate DATE;
-FOREIGN KEY(UserId) REFERENCES Users(Id) ON DELETE CASCADE;
+Id SERIAL PRIMARY KEY,
+UserId INT NOT NULL,
+Type TEXT NOT NULL,
+TargetWeight NUMERIC(5,2),
+DailyCalories INT,
+StartDate DATE DEFAULT CURRENT_DATE,
+EndDate DATE,
+FOREIGN KEY(UserId) REFERENCES Users(Id) ON DELETE CASCADE
 );
 
 CREATE TABLE FoodGroups(
-Id SERIAL PRIMARY KEY;
-Name TEXT NOT NULL;
-Note TEXT;
+Id SERIAL PRIMARY KEY,
+Name TEXT NOT NULL,
+Note TEXT
 );
 
 CREATE TABLE FoodProducts(
-Id SERIAL PRIMARY KEY;
-GroupId INT NOT NULL;
-Title TEXT NOT NULL;
-Brand TEXT;
-Kcals100 INT;
-Prots100 NUMERIC(5,2);
-Fats100 NUMERIC(5,2);
-Carbs100 NUMERIC(5,2);
-FOREIGN KEY(GroupId) REFERENCES FoodGroups(Id);
+Id SERIAL PRIMARY KEY,
+GroupId INT NOT NULL,
+Title TEXT NOT NULL,
+Brand TEXT,
+Kcals100 INT,
+Prots100 NUMERIC(5,2),
+Fats100 NUMERIC(5,2),
+Carbs100 NUMERIC(5,2),
+FOREIGN KEY(GroupId) REFERENCES FoodGroups(Id)
 );
 
 CREATE TABLE Recipes(
-Id SERIAL PRIMARY KEY;
-Title TEXT NOT NULL;
-PrepMinutes INT;
-Steps TEXT;
-TotalKcal NUMERIC(10,2);
+Id SERIAL PRIMARY KEY,
+Title TEXT NOT NULL,
+PrepMinutes INT,
+Steps TEXT,
+TotalKcal NUMERIC(10,2)
 );
 
 CREATE TABLE RecipeParts(
-RecipeId INT NOT NULL;
-ProductId INT NOT NULL;
-Grams NUMERIC(10,2) NOT NULL;
-PRIMARY KEY(RecipeId,ProductId);
-FOREIGN KEY(RecipeId) REFERENCES Recipes(Id) ON DELETE CASCADE;
-FOREIGN KEY(ProductId) REFERENCES FoodProducts(Id);
+RecipeId INT NOT NULL,
+ProductId INT NOT NULL,
+Grams NUMERIC(10,2) NOT NULL,
+PRIMARY KEY(RecipeId, ProductId),
+FOREIGN KEY(RecipeId) REFERENCES Recipes(Id) ON DELETE CASCADE,
+FOREIGN KEY(ProductId) REFERENCES FoodProducts(Id)
 );
 
 CREATE TABLE FoodLog(
-Id BIGSERIAL PRIMARY KEY;
-UserId INT NOT NULL;
-ProductId INT NOT NULL;
-TimeAt TIMESTAMP DEFAULT NOW();
-Meal TEXT;
-Grams NUMERIC(10,2);
-FOREIGN KEY(UserId) REFERENCES Users(Id) ON DELETE CASCADE;
-FOREIGN KEY(ProductId) REFERENCES FoodProducts(Id);
+Id BIGSERIAL PRIMARY KEY,
+UserId INT NOT NULL,
+ProductId INT NOT NULL,
+TimeAt TIMESTAMP DEFAULT NOW(),
+Meal TEXT,
+Grams NUMERIC(10,2),
+FOREIGN KEY(UserId) REFERENCES Users(Id) ON DELETE CASCADE,
+FOREIGN KEY(ProductId) REFERENCES FoodProducts(Id)
 );
 
-CREATE OR REPLACE FUNCTION CalcBmi(w NUMERIC,h NUMERIC)
+CREATE OR REPLACE FUNCTION CalcBmi(w NUMERIC, h NUMERIC)
 RETURNS NUMERIC AS $$
 BEGIN
-IF h IS NULL OR h=0 THEN RETURN NULL; END IF;
-RETURN ROUND(w/((h/100.0)^2),2);
+IF h IS NULL OR h = 0 THEN
+RETURN NULL;
+END IF;
+RETURN ROUND(w / ((h / 100.0)^2), 2);
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE PROCEDURE AddFoodLog(pUser INT,pProd INT,pMeal TEXT,pGrams NUMERIC)
+CREATE OR REPLACE PROCEDURE AddFoodLog(pUser INT, pProd INT, pMeal TEXT, pGrams NUMERIC)
 LANGUAGE plpgsql AS $$
 BEGIN
 INSERT INTO FoodLog(UserId,ProductId,Meal,Grams,TimeAt)
-VALUES(pUser,pProd,pMeal,pGrams,NOW());
+VALUES(pUser, pProd, pMeal, pGrams, NOW());
 END;
 $$;
 
 CREATE OR REPLACE FUNCTION UpdateRecipeKcal()
 RETURNS TRIGGER AS $$
+DECLARE
+rid INT;
 BEGIN
+rid := COALESCE(NEW.RecipeId, OLD.RecipeId);
+
 UPDATE Recipes
-SET TotalKcal=(SELECT SUM(fp.Kcals100*rp.Grams/100.0)
+SET TotalKcal = (
+SELECT SUM(fp.Kcals100 * rp.Grams / 100.0)
 FROM RecipeParts rp
-JOIN FoodProducts fp ON fp.Id=rp.ProductId
-WHERE rp.RecipeId=COALESCE(NEW.RecipeId,OLD.RecipeId))
-WHERE Id=COALESCE(NEW.RecipeId,OLD.RecipeId);
+JOIN FoodProducts fp ON fp.Id = rp.ProductId
+WHERE rp.RecipeId = rid
+)
+WHERE Id = rid;
+
 RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -100,8 +109,6 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER TrgRecipeKcal
 AFTER INSERT OR UPDATE OR DELETE ON RecipeParts
 FOR EACH ROW EXECUTE FUNCTION UpdateRecipeKcal();
-
--- data
 
 INSERT INTO FoodGroups(Name,Note) VALUES
 ('Vegetables','Fresh vegetables'),
@@ -141,10 +148,12 @@ INSERT INTO Recipes(Title,PrepMinutes,Steps) VALUES
 ('Simple Salad',12,'Chop vegetables and mix');
 
 INSERT INTO RecipeParts(RecipeId,ProductId,Grams) VALUES
-(1,4,280),(1,7,120),
-(2,3,150),(2,6,200),
-(3,1,180),(3,2,90);
-
+(1,4,280),
+(1,7,120),
+(2,3,150),
+(2,6,200),
+(3,1,180),
+(3,2,90);
 
 INSERT INTO FoodLog(UserId,ProductId,Meal,Grams,TimeAt) VALUES
 (1,1,'Breakfast',200,NOW()-INTERVAL '5 days'),
